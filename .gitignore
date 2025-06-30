@@ -1,0 +1,20 @@
+# Python virtual environment
+venv/
+
+# Generated files
+netpath_results.json
+
+# GeoIP database (large, sensitive)
+GeoLite2-City.mmdb
+
+# Node.js build and dependencies
+frontend/node_modules/
+frontend/build/
+frontend/.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# macOS files
+.DS_Store
