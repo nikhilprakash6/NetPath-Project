@@ -8,91 +8,135 @@ import time
 import logging
 import socket
 import sys
+import traceback
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 class NetPath:
-    def __init__(self, dest, max_hops=30, timeout=2, probes=3):
+    def __init__(self, dest, max_hops=30, timeout=3, probes=3, iface=None):
         self.dest = dest
         self.max_hops = max_hops
         self.timeout = timeout
         self.probes = probes
+        self.iface = iface
         self.geoip = geoip2.database.Reader("GeoLite2-City.mmdb")
         self.results = []
-        # Resolve destination hostname to IP
         try:
             self.dest_ip = socket.gethostbyname(dest)
-            print(f"Resolved IP: {self.dest_ip}")
+            logging.info(f"Resolved IP: {self.dest_ip}")
         except socket.gaierror:
-            print("Could not resolve the hostname.")
+            logging.error("Could not resolve the hostname.")
+            sys.exit(1)
 
     def get_as_info(self, ip):
-        # Get AS number/org from ip-api.com
         try:
             response = requests.get(f"http://ip-api.com/json/{ip}", timeout=5)
             data = response.json()
             if data.get("status") == "success":
-                return f"AS{data.get('as', 'Unknown')}"
-            #return "Unknown"
+                return data.get("as", "Unknown")
+            return "Unknown"
         except Exception as e:
-            print(f"Couldn't get AS info for {ip}: {e}")
+            logging.warning(f"Couldn't get AS info for {ip}: {e}")
             return "Unknown"
 
     def get_geo_info(self, ip):
-        # Get city/country info for an IP
         try:
             response = self.geoip.city(ip)
             city = response.city.name or "Unknown"
             country = response.country.name or "Unknown"
             return f"{city}, {country}"
         except Exception as e:
-            print(f"GeoIP lookup failed for {ip}: {e}")
+            logging.warning(f"GeoIP lookup failed for {ip}: {e}")
             return "Unknown"
 
     def traceroute(self):
-        print(f"Tracing route to {self.dest} ({self.dest_ip})")
-        scapy.conf.iface = "en0"
+        logging.info(f"Tracing route to {self.dest} ({self.dest_ip})")
+        scapy.conf.iface = self.iface or scapy.conf.iface
+
         for ttl in range(1, self.max_hops + 1):
-            hop = {"hop": ttl, "ip": None, "rtt": [], "loss": 0, "hostname": None, "geo": None, "as": None}
-            replies = 0
+            logging.info(f"\n[TTL={ttl}] Probing...")
+            hop = {
+                "hop": ttl, "ip": None, "rtt": [], "loss": 100.0,
+                "hostname": None, "geo": None, "as": None, "reply_proto": None
+            }
+            replies = []
 
-            # Try ICMP
-            for _ in range(self.probes):
-                pkt = scapy.IP(dst=self.dest, ttl=ttl) / scapy.ICMP()
-                start = time.time()
-                reply = scapy.sr1(pkt, timeout=self.timeout, verbose=0, iface="en0")
-                rtt = (time.time() - start) * 1000
-                if reply:
-                    replies += 1
-                    hop["ip"] = reply.src
-                    hop["rtt"].append(round(rtt, 2))
+            probe_types = [
+                ("TCP:80", lambda: scapy.IP(dst=self.dest, ttl=ttl) / scapy.TCP(dport=80, flags="S")),
+                ("TCP:443", lambda: scapy.IP(dst=self.dest, ttl=ttl) / scapy.TCP(dport=443, flags="S")),
+                ("TCP:53", lambda: scapy.IP(dst=self.dest, ttl=ttl) / scapy.TCP(dport=53, flags="S")),
+                ("TCP:22", lambda: scapy.IP(dst=self.dest, ttl=ttl) / scapy.TCP(dport=22, flags="S")),
+                ("TCP:25", lambda: scapy.IP(dst=self.dest, ttl=ttl) / scapy.TCP(dport=25, flags="S")),
+                ("ICMP", lambda: scapy.IP(dst=self.dest, ttl=ttl) / scapy.ICMP()),
+                ("UDP:53", lambda: scapy.IP(dst=self.dest, ttl=ttl) / scapy.UDP(dport=53)),
+                ("UDP:123", lambda: scapy.IP(dst=self.dest, ttl=ttl) / scapy.UDP(dport=123)),
+                ("UDP:33434", lambda: scapy.IP(dst=self.dest, ttl=ttl) / scapy.UDP(dport=33434)),
+                ("UDP:161", lambda: scapy.IP(dst=self.dest, ttl=ttl) / scapy.UDP(dport=161))
+            ]
+
+            destination_reached = False
+            for probe_num in range(self.probes): # probe_num = 1, 2, 3
+                if destination_reached:
+                    break
+                logging.info(f"  Probe #{probe_num + 1}:")
+                for label, probe_func in probe_types:
+                    if destination_reached:
+                        break
                     try:
-                        hop["hostname"] = socket.gethostbyaddr(reply.src)[0]
-                    except socket.herror:
-                        hop["hostname"] = "Unknown"
-            '''# If ICMP fails (no replies), try TCP
-            if replies == 0:
-                for _ in range(self.probes):
-                    pkt = scapy.IP(dst=self.dest, ttl=ttl) / scapy.TCP(dport=80, flags="S")
-                    start = time.time()
-                    reply = scapy.sr1(pkt, timeout=self.timeout, verbose=0, iface="en0")
-                    rtt = (time.time() - start) * 1000
-                    if reply:
-                        replies += 1
-                        hop["ip"] = reply.src
-                        hop["rtt"].append(round(rtt, 2))
-            # If TCP fails, try UDP
-            if replies == 0:
-                for _ in range(self.probes):
-                    pkt = scapy.IP(dst=self.dest, ttl=ttl) / scapy.UDP(dport=33434)
-                    start = time.time()
-                    reply = scapy.sr1(pkt, timeout=self.timeout, verbose=0, iface="en0")
-                    rtt = (time.time() - start) * 1000
-                    if reply:
-                        replies += 1
-                        hop["ip"] = reply.src
-                        hop["rtt"].append(round(rtt, 2))'''
+                        pkt = probe_func()
+                        logging.debug(f"    Sending {label}...")
+                        start = time.time()
+                        reply = scapy.sr1(pkt, timeout=self.timeout, verbose=0, iface=self.iface)
+                        rtt = (time.time() - start) * 1000
 
-            hop["loss"] = round((1 - replies / self.probes) * 100, 2)
-            if hop["ip"]:
+                        if reply:
+                            # Handle ICMP Time Exceeded (intermediate hop) type = 11
+                            if reply.haslayer(scapy.ICMP) and reply[scapy.ICMP].type == 11:
+                                logging.info(f"    Reply from {reply.src} ({label}) in {round(rtt, 2)} ms")
+                                replies.append(reply)
+                                if not hop["ip"]:
+                                    hop["ip"] = reply.src
+                                    hop["reply_proto"] = label
+                                    hop["rtt"].append(round(rtt, 2))
+                                break
+                            # Handle TCP SYN-ACK or RST (destination reached) SYN-ACK = 0x12, RST = 0x04
+                            #elif reply.haslayer(scapy.TCP) and (reply[scapy.TCP].flags & 0x12 or reply[scapy.TCP].flags & 0x04):
+                            elif reply.haslayer(scapy.TCP) and (reply[scapy.TCP].flags == 0x12 or reply[scapy.TCP].flags == 0x04):
+                                logging.info(f"    Reply from {reply.src} ({label}) in {round(rtt, 2)} ms (Destination)")
+                                replies.append(reply)
+                                if not hop["ip"]:
+                                    hop["ip"] = reply.src
+                                    hop["reply_proto"] = label
+                                    hop["rtt"].append(round(rtt, 2))
+                                if reply.src == self.dest_ip:
+                                    destination_reached = True
+                                break
+                            # Handle UDP Port Unreachable (destination reached) type = 0, code = 0 or type = 3, code = 3
+                            elif reply.haslayer(scapy.ICMP) and ( reply[scapy.ICMP].type == 0 and reply[scapy.ICMP].code == 0 ) or ( reply[scapy.ICMP].type == 3 and reply[scapy.ICMP].code == 3 ):
+                                logging.info(f"    Reply from {reply.src} ({label}) in {round(rtt, 2)} ms (Destination)")
+                                replies.append(reply)
+                                if not hop["ip"]:
+                                    hop["ip"] = reply.src
+                                    hop["reply_proto"] = label
+                                    hop["rtt"].append(round(rtt, 2))
+                                if reply.src == self.dest_ip:
+                                    destination_reached = True
+                                break
+                            else:
+                                logging.debug(f"    Unexpected reply for {label}: {reply.summary()}")
+                        else:
+                            logging.debug(f"    No reply for {label}")
+                    except Exception as e:
+                        logging.error(f"    Exception in probe {label}: {e}")
+                        traceback.print_exc()
+
+            if replies:
+                hop["loss"] = round((1 - len(replies) / self.probes) * 100, 2)
+                try:
+                    hop["hostname"] = socket.gethostbyaddr(hop["ip"])[0]
+                except socket.herror:
+                    hop["hostname"] = "Unknown"
                 hop["geo"] = self.get_geo_info(hop["ip"])
                 hop["as"] = self.get_as_info(hop["ip"])
             else:
@@ -100,11 +144,13 @@ class NetPath:
                 hop["hostname"] = "N/A"
                 hop["geo"] = "N/A"
                 hop["as"] = "N/A"
+                hop["reply_proto"] = "None"
+                logging.warning(f"No responses for TTL={ttl}. Possible missing hop.")
 
             self.results.append(hop)
 
-            # Stop if we hit the destination IP
-            if hop["ip"] == self.dest_ip:
+            if destination_reached:
+                logging.info(f"Destination {self.dest_ip} reached at hop {ttl}")
                 break
 
         return self.results
@@ -122,22 +168,31 @@ class NetPath:
                 avg_rtt,
                 f"{hop['loss']}%",
                 hop["geo"],
-                hop["as"]
+                hop["as"],
+                hop["reply_proto"]
             ])
-        headers = ["Hop", "IP", "Hostname", "RTTs (ms)", "Avg RTT (ms)", "Packet Loss", "Geo", "AS Info"]
+        headers = ["Hop", "IP", "Hostname", "RTTs (ms)", "Avg RTT (ms)", "Packet Loss", "Geo", "AS Info", "Reply Proto"]
         print(tabulate.tabulate(table, headers=headers, tablefmt="grid"))
 
     def save_to_json(self, filename="netpath_results.json"):
         with open(filename, "w") as f:
             json.dump(self.results, f, indent=4)
-        print(f"Saved results to {filename}")
+        logging.info(f"Saved results to {filename}")
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         dest = sys.argv[1]
     else:
         dest = input("Enter destination IP or hostname (e.g., 8.8.8.8): ") or "8.8.8.8"
-    tracer = NetPath(dest)
-    tracer.traceroute()
-    tracer.show_results()
-    tracer.save_to_json()
+    tracer = NetPath(dest, timeout=3, probes=3)
+    try:
+        tracer.traceroute()
+        tracer.show_results()
+        tracer.save_to_json()
+    except PermissionError:
+        logging.error("Error: Run this script with root/admin privileges (e.g., sudo).")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        logging.info("Traceroute interrupted by user.")
+        tracer.show_results()
+        tracer.save_to_json()
