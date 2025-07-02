@@ -1,0 +1,285 @@
+.graph-container {
+  background: #fafafa;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  margin: 20px 0;
+  overflow: hidden;
+}
+
+.graph-header {
+  background: #f5f5f5;
+  padding: 15px 20px;
+  border-bottom: 1px solid #ddd;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.graph-header h3 {
+  margin: 0;
+  color: #333;
+  font-size: 18px;
+}
+
+.legend {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #666;
+}
+
+.legend-color {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid;
+}
+
+.legend-color.source {
+  background-color: #e3f2fd;
+  border-color: #2196f3;
+}
+
+.legend-color.intermediate {
+  background-color: #f1f8e9;
+  border-color: #4caf50;
+}
+
+.legend-color.destination {
+  background-color: #f3e5f5;
+  border-color: #9c27b0;
+}
+
+.graph-content {
+  padding: 30px 20px;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.path-container {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 20px 0;
+}
+
+.path-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  min-width: 120px;
+}
+
+.path-node:hover {
+  transform: translateY(-5px);
+  z-index: 10;
+}
+
+.path-node.source {
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  border: 2px solid #2196f3;
+}
+
+.path-node.intermediate {
+  background: linear-gradient(135deg, #f1f8e9 0%, #c8e6c9 100%);
+  border: 2px solid #4caf50;
+}
+
+.path-node.destination {
+  background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
+  border: 2px solid #9c27b0;
+}
+
+.node-content {
+  padding: 15px;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  background: white;
+  min-width: 120px;
+}
+
+.hop-number {
+  font-weight: bold;
+  font-size: 14px;
+  color: #333;
+  margin-bottom: 5px;
+}
+
+.ip-address {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 3px;
+  word-break: break-all;
+}
+
+.hostname {
+  font-size: 10px;
+  color: #888;
+  font-style: italic;
+  word-break: break-all;
+}
+
+.path-connection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  min-width: 80px;
+}
+
+.connection-line {
+  width: 60px;
+  height: 2px;
+  background: linear-gradient(90deg, #666 0%, #999 100%);
+  position: relative;
+}
+
+.connection-arrow {
+  position: absolute;
+  right: -5px;
+  top: -3px;
+  width: 0;
+  height: 0;
+  border-left: 8px solid #666;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+}
+
+.rtt-label {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  color: #666;
+  margin-top: 5px;
+  white-space: nowrap;
+}
+
+.tooltip {
+  position: fixed;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0;
+  z-index: 1000;
+  max-width: 300px;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.tooltip-header {
+  background: #f5f5f5;
+  padding: 8px 12px;
+  border-bottom: 1px solid #ddd;
+  border-radius: 8px 8px 0 0;
+  font-weight: bold;
+  color: #333;
+}
+
+.tooltip-content {
+  padding: 8px 12px;
+}
+
+.tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  gap: 10px;
+}
+
+.tooltip-label {
+  font-weight: 500;
+  color: #666;
+  min-width: 80px;
+}
+
+.tooltip-value {
+  color: #333;
+  text-align: right;
+  word-break: break-all;
+}
+
+.no-data-message {
+  text-align: center;
+  padding: 40px 20px;
+  color: #666;
+  font-style: italic;
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  margin: 20px;
+}
+
+@media (max-width: 768px) {
+  .graph-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .legend {
+    gap: 15px;
+  }
+  
+  .path-container {
+    flex-direction: column;
+    gap: 15px;
+  }
+  
+  .path-connection {
+    transform: rotate(90deg);
+    min-width: 40px;
+  }
+  
+  .connection-line {
+    width: 40px;
+  }
+  
+  .rtt-label {
+    transform: rotate(-90deg);
+  }
+  
+  .tooltip {
+    max-width: 250px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .graph-content {
+    padding: 20px 10px;
+  }
+  
+  .path-container {
+    gap: 10px;
+  }
+  
+  .node-content {
+    padding: 10px;
+    min-width: 100px;
+  }
+  
+  .tooltip {
+    max-width: 200px;
+    font-size: 10px;
+  }
+} 
